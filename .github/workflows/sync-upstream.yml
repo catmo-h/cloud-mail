@@ -1,0 +1,46 @@
+name: Sync fork with upstream
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # Every day at 11:17 Asia/Shanghai
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-sync-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'catmo-h/cloud-mail'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge upstream main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/maillab/cloud-mail.git
+          git fetch --no-tags upstream main
+
+          if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            git merge --no-edit --no-ff FETCH_HEAD
+          fi
+
+          # Public repositories can lose scheduled runs after 60 days without activity.
+          if (( $(date +%s) - $(git log -1 --format=%ct) > 2592000 )); then
+            git commit --allow-empty -m "chore: keep upstream sync scheduled [skip ci]"
+          fi
+
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            git push origin HEAD:main
+          fi
